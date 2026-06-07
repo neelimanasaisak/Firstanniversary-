@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Supabase Connection Test</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.8/dist/umd/supabase.js"></script>
+<style>
+  body{ font-family:system-ui,sans-serif; background:#0b0014; color:#eee; padding:20px; max-width:640px; margin:0 auto; }
+  h1{ color:#ff6b9d; font-size:20px; }
+  .row{ padding:10px 12px; margin:8px 0; border-radius:10px; background:#1a0a26; border-left:4px solid #555; font-size:14px; white-space:pre-wrap; word-break:break-word; }
+  .ok{ border-color:#2ecc71; } .fail{ border-color:#ff4d6d; } .warn{ border-color:#ffd700; }
+  button{ background:linear-gradient(135deg,#ff6b9d,#e040fb); color:#fff; border:none; padding:14px 24px; border-radius:14px; font-size:16px; width:100%; margin:14px 0; }
+  input[type=file]{ margin:10px 0; color:#ccc; }
+</style>
+</head>
+<body>
+<h1>🌹 Supabase Connection Test</h1>
+<p style="font-size:13px;color:#aaa;">This runs the exact operations your anniversary site uses. Tap the button. Green = working.</p>
+<input type="file" id="img" accept="image/*">
+<p style="font-size:12px;color:#888;">(optional) pick a photo to test real image upload</p>
+<button onclick="run()">▶ Run Full Test</button>
+<div id="out"></div>
+<script>
+const SB_URL='https://thcrezqeawowuhkyxaez.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoY3JlenFlYXdvd3Voa3l4YWV6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3OTA4MjMsImV4cCI6MjA5NjM2NjgyM30.DJx-HfcUgzqVJZNuSkObvI1TiEt1zjeAfFe6j0Q5v0E';
+const BUCKET='memories';
+const out=document.getElementById('out');
+function add(msg,cls){ const d=document.createElement('div'); d.className='row '+(cls||''); d.textContent=msg; out.appendChild(d); }
+async function run(){
+  out.innerHTML='';
+  if(!window.supabase || !window.supabase.createClient){
+    add('❌ Supabase library did NOT load from the CDN.\n→ Check your internet, or the script tag. window.supabase is '+typeof window.supabase,'fail');
+    return;
+  }
+  let sb;
+  try{
+    const cleanUrl=SB_URL.trim();
+    sb=window.supabase.createClient(cleanUrl,KEY.trim());
+    add('1. ✅ Client created (url='+cleanUrl+')','ok');
+  }
+  catch(e){ add('1. ❌ createClient failed: '+(e.message||e)+'\nURL was: ['+SB_URL+']','fail'); return; }
+  const K='__BROWSERTEST__'+Date.now();
+  // read
+  try{ const {error}=await sb.from('memories').select('id').limit(1); if(error)throw error; add('2. ✅ Table readable (SELECT)','ok'); }
+  catch(e){ add('2. ❌ Table read failed: '+(e.message||e)+'\n→ Did the SQL run? Is the table named "memories"?','fail'); }
+  // insert
+  let id=null;
+  try{ const {data,error}=await sb.from('memories').insert([{couple_key:K,kind:'story',section:'mem',title:'Browser Test',body:'hi'}]).select(); if(error)throw error; id=data[0].id; add('3. ✅ INSERT works (id '+id+')','ok'); }
+  catch(e){ add('3. ❌ INSERT failed: '+(e.message||e)+'\n→ Check INSERT policy in SQL','fail'); }
+  // read back
+  try{ const {data,error}=await sb.from('memories').select('*').eq('couple_key',K); if(error)throw error; add('4. ✅ Persisted & retrievable ('+data.length+' row)','ok'); }
+  catch(e){ add('4. ❌ '+(e.message||e),'fail'); }
+  // update
+  if(id) try{ const {error}=await sb.from('memories').update({title:'Edited'}).eq('id',id); if(error)throw error; add('5. ✅ UPDATE works','ok'); }
+  catch(e){ add('5. ❌ '+(e.message||e),'fail'); }
+  // storage
+  try{
+    const f=document.getElementById('img').files[0];
+    const blob=f||new Blob(['test'],{type:'text/plain'});
+    const path=K+'/'+(f?f.name:'test.txt');
+    const {error}=await sb.storage.from(BUCKET).upload(path,blob,{upsert:true});
+    if(error)throw error;
+    const {data}=sb.storage.from(BUCKET).getPublicUrl(path);
+    const pr=await fetch(data.publicUrl);
+    add('6. ✅ STORAGE upload + public URL work ('+pr.status+')\n'+data.publicUrl, pr.status===200?'ok':'warn');
+    await sb.storage.from(BUCKET).remove([path]);
+  }catch(e){ add('6. ❌ STORAGE failed: '+(e.message||e)+'\n→ Is bucket "memories" created & Public? Storage policies run?','fail'); }
+  // delete
+  try{ const {error}=await sb.from('memories').delete().eq('couple_key',K); if(error)throw error; add('7. ✅ DELETE works (test data cleaned)','ok'); }
+  catch(e){ add('7. ❌ '+(e.message||e),'fail'); }
+  add('=== TEST COMPLETE ===');
+}
+</script>
+</body>
+</html>
